@@ -70,31 +70,50 @@ M.start_presentation = function(opts)
 
   ---@type vim.api.keyset.win_config[]
   local windows = {
+    background = {
+      relative = "editor",
+      width = width,
+      height = height,
+      style = "minimal",
+      col = 0,
+      row = 0,
+      zindex = 1,
+    },
     header = {
       relative = "editor",
       width = width,
       height = 1,
       style = "minimal",
-      col = 1,
+      border = "rounded",
+      col = 0,
       row = 0,
+      zindex = 2,
+
     },
     body = {
       relative = "editor",
-      width = width,
-      height = height - 2,
+      width = width - 8,
+      height = height - 5,
       style = "minimal",
-      col = 1,
-      row = 1,
+      border = { " ", " ", " ", " ", " ", " ", " ", " ", },
+      col = 8,
+      row = 3,
     },
     -- footer = {},
   }
+  local background_float = create_floating_window(windows.background)
   local header_float = create_floating_window(windows.header)
   local body_float = create_floating_window(windows.body)
+
+  vim.bo[header_float.buf].filetype = "markdown"
+  vim.bo[body_float.buf].filetype = "markdown"
 
   local set_slide_content = function(idx)
     local slide = parsed.slides[idx]
 
-    vim.api.nvim_buf_set_lines(header_float.buf, 0, -1, false, { slide.title })
+    local padding = string.rep(" ", (width - #slide.title) / 2)
+    local title = padding .. slide.title
+    vim.api.nvim_buf_set_lines(header_float.buf, 0, -1, false, { title })
     vim.api.nvim_buf_set_lines(body_float.buf, 0, -1, false, slide.body)
   end
 
@@ -116,7 +135,7 @@ M.start_presentation = function(opts)
   })
 
   vim.keymap.set("n", "q", function()
-    vim.api.nvim_win_close(body_float.win, true)
+    pcall(vim.api.nvim_win_close, body_float.win, true)
   end, {
     desc = "Close Window",
     buffer = body_float.buf
@@ -143,13 +162,14 @@ M.start_presentation = function(opts)
       end
 
       pcall(vim.api.nvim_win_close, header_float.win, true)
+      pcall(vim.api.nvim_win_close, background_float.win, true)
     end
   })
 
   set_slide_content(current_slide)
 end
 
-M.start_presentation({ bufnr = 61 })
+M.start_presentation({ bufnr = 63 })
 -- vim.print(parse_slides {
 --   "# Hello",
 --   "This is something else",
