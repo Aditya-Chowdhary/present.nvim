@@ -216,12 +216,14 @@ M.start_presentation = function(opts)
   set_slide_content(state.current_slide)
 end
 
-M.start_presentation({ bufnr = 83 })
+-- M.start_presentation({ bufnr = 3 })
 -- vim.print(parse_slides {
 --   "# Hello",
 --   "This is something else",
 --   "# World",
 --   "This is another thing",
 -- })
+
+M._parse_slides = parse_slides
 
 return M
