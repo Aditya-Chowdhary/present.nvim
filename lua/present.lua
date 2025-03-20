@@ -11,8 +11,67 @@ local function create_floating_window(config, enter)
   return { buf = buf, win = win }
 end
 
-M.setup = function()
-  -- nothing
+--- Default executor for lua code
+---@param block present.Block
+local execute_lua_code = function(block)
+  -- Override default print function to capture all output
+  -- Store the original print function
+  local original_print = print
+
+  local output = {}
+  -- Redefine the print function
+  print = function(...)
+    local args = { ... }
+    local message = table.concat(vim.tbl_map(tostring, args), "\t")
+    table.insert(output, message)
+  end
+
+
+  -- Call the provided function
+  local chunk = loadstring(block)
+  pcall(function()
+    if not chunk then
+      table.insert(output, "<<<Broken Code>>>")
+    else
+      chunk()
+    end
+
+    return output
+  end)
+
+  -- Restore original print function
+  print = original_print
+
+  return output
+end
+
+M.create_system_executor = function(program)
+  return function(block)
+    local tempfile = vim.fn.tempname()
+    vim.fn.writefile(vim.split(block, "\n"), tempfile)
+    local result = vim.system({ program, tempfile }, { text = true }):wait()
+    return vim.split(result.stdout, "\n")
+  end
+end
+
+
+local options = {
+  executors = {
+    lua = execute_lua_code,
+    javascript = M.create_system_executor("node"),
+    python = M.create_system_executor("python3"),
+  }
+}
+
+M.setup = function(opts)
+  opts = opts or {}
+  opts.executors = opts.executors or {}
+
+  opts.executors.lua = opts.executors.lua or execute_lua_code
+  opts.executors.javascript = opts.executors.lua or M.create_system_executor("node")
+  opts.executors.python = opts.executors.lua or M.create_system_executor("python3")
+
+  options = opts
 end
 
 ---@class present.Slides
@@ -205,6 +264,7 @@ M.start_presentation = function(opts)
     pcall(vim.api.nvim_win_close, state.floats.body.win, true)
   end, { desc = "Close Window", })
 
+
   present_keymap("n", "X", function()
     local slide = state.parsed.slides[state.current_slide]
     -- TODO: make a way for people to exec this for other langs
@@ -214,43 +274,30 @@ M.start_presentation = function(opts)
       return
     end
 
-    -- Override default print function to capture all output
-    -- Store the original print function
-    local original_print = print
+    local executor = options.executors[block.language]
+    if not executor then
+      print("No Valid Executor for this language")
+      return
+    end
 
     -- Table to capture print msgs
-    local output = { "", "# Code", "", "```" .. block.language }
+    local output = { "# Code", "", "```" .. block.language }
     vim.list_extend(output, vim.split(block.body, "\n"))
     table.insert(output, "```")
 
-    -- Redefine the print function
-    print = function(...)
-      local args = { ... }
-      local message = table.concat(vim.tbl_map(tostring, args), "\t")
-      table.insert(output, message)
-    end
-
-    local chunk = loadstring(block.body)
-
-    -- Call the provided function
-    pcall(function()
-      table.insert(output, "")
-      table.insert(output, "# Output ")
-      table.insert(output, "")
-      if not chunk then
-        table.insert(output, "<<<Broken Code>>>")
-      else
-        chunk()
-      end
-    end)
-
-    -- Restore original print function
-    print = original_print
+    table.insert(output, "")
+    table.insert(output, '# Output')
+    table.insert(output, "")
+    table.insert(output, "```")
+    vim.list_extend(output, executor(block.body))
+    table.insert(output, "```")
 
     local buf = vim.api.nvim_create_buf(false, true)
+
+
     local width_temp = math.floor(vim.o.columns * 0.8)
     local height_temp = math.floor(vim.o.lines * 0.8)
-    vim.api.nvim_open_win(buf, true, {
+    local win = vim.api.nvim_open_win(buf, true, {
       relative = "editor",
       style = "minimal",
       noautocmd = true,
@@ -260,6 +307,10 @@ M.start_presentation = function(opts)
       row = math.floor((vim.o.lines - height_temp) / 2),
       col = math.floor((vim.o.columns - width_temp) / 2),
     })
+
+    vim.keymap.set("n", "q", function()
+      pcall(vim.api.nvim_win_close, win, true)
+    end, { buffer = buf, desc = "Close output window" })
 
     vim.bo[buf].filetype = "markdown"
     vim.api.nvim_buf_set_lines(buf, 0, -1, false, output)
@@ -311,7 +362,7 @@ M.start_presentation = function(opts)
   set_slide_content(state.current_slide)
 end
 
-M.start_presentation({ bufnr = 62 })
+-- M.start_presentation({ bufnr = 15 })
 -- vim.print(parse_slides {
 --   "# Hello",
 --   "This is something else",
