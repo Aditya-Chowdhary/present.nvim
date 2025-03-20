@@ -2,6 +2,13 @@
 
 A plugin to present md files.
 
+# Features
+
+Can execute code in lua blocks when you have them in a slide
+```lua
+print("Hello World!", 40)
+```
+
 # Usage
 
 ```lua
