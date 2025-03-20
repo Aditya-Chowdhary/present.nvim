@@ -1,6 +1,10 @@
 local M = {}
 
 local function create_floating_window(config, enter)
+  if enter == nil then
+    enter = false
+  end
+
   local buf = vim.api.nvim_create_buf(false, true)
   local win = vim.api.nvim_open_win(buf, enter or false, config)
 
@@ -210,8 +214,55 @@ M.start_presentation = function(opts)
       return
     end
 
+    -- Override default print function to capture all output
+    -- Store the original print function
+    local original_print = print
+
+    -- Table to capture print msgs
+    local output = { "", "# Code", "", "```" .. block.language }
+    vim.list_extend(output, vim.split(block.body, "\n"))
+    table.insert(output, "```")
+
+    -- Redefine the print function
+    print = function(...)
+      local args = { ... }
+      local message = table.concat(vim.tbl_map(tostring, args), "\t")
+      table.insert(output, message)
+    end
+
     local chunk = loadstring(block.body)
-    chunk()
+
+    -- Call the provided function
+    pcall(function()
+      table.insert(output, "")
+      table.insert(output, "# Output ")
+      table.insert(output, "")
+      if not chunk then
+        table.insert(output, "<<<Broken Code>>>")
+      else
+        chunk()
+      end
+    end)
+
+    -- Restore original print function
+    print = original_print
+
+    local buf = vim.api.nvim_create_buf(false, true)
+    local width_temp = math.floor(vim.o.columns * 0.8)
+    local height_temp = math.floor(vim.o.lines * 0.8)
+    vim.api.nvim_open_win(buf, true, {
+      relative = "editor",
+      style = "minimal",
+      noautocmd = true,
+      width = width_temp,
+      height = height_temp,
+      border = "rounded",
+      row = math.floor((vim.o.lines - height_temp) / 2),
+      col = math.floor((vim.o.columns - width_temp) / 2),
+    })
+
+    vim.bo[buf].filetype = "markdown"
+    vim.api.nvim_buf_set_lines(buf, 0, -1, false, output)
   end)
 
   local restore = {
